@@ -1,6 +1,8 @@
+#默认使用 riscv64gc 作为目标平台而不是原先的默认 x86_64-unknown-linux-gnu
 [build]
 target = "riscv64gc-unknown-none-elf"
 
+#修改 Cargo 的配置文件来使用我们自己的链接脚本 ,而非使用默认的内存布局
 [target.riscv64gc-unknown-none-elf]
 rustflags = [
     "-Clink-arg=-Tsrc/linker.ld", "-Cforce-frame-pointers=yes"
