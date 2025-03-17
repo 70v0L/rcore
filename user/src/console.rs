@@ -4,6 +4,7 @@ use core::fmt::{self, Write};
 struct Stdout;
 
 const STDOUT: usize = 1;
+//传入的 fd 参数设置为 1，它代表标准输出， 也就是输出到屏幕
 
 impl Write for Stdout {
     fn write_str(&mut self, s: &str) -> fmt::Result {
