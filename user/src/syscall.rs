@@ -3,6 +3,7 @@ use core::arch::asm;
 const SYSCALL_WRITE: usize = 64;
 const SYSCALL_EXIT: usize = 93;
 
+//系统调用参数传递
 fn syscall(id: usize, args: [usize; 3]) -> isize {
     //将所有的系统调用都封装成 `syscall` 函数，可以看到它支持传入 syscall ID 和 3 个参数
     let mut ret: isize;
@@ -18,6 +19,7 @@ fn syscall(id: usize, args: [usize; 3]) -> isize {
     ret//变量 ret 保存系统调用返回值，它也是函数 syscall 的输出/返回值
 }
 
+//系统调用封装
 pub fn sys_write(fd: usize, buffer: &[u8]) -> isize {
     syscall(SYSCALL_WRITE, [fd, buffer.as_ptr() as usize, buffer.len()])
 }

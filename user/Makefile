@@ -16,3 +16,6 @@ binary: elf
 	@$(foreach elf, $(ELFS), $(OBJCOPY) $(elf) --strip-all -O binary $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.bin, $(elf));)
 
 build: binary
+
+#APPS：列出 src/bin 目录下所有 .rs 文件，即所有用户态程序的 Rust 源代码文件
+#

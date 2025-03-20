@@ -8,7 +8,7 @@ pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
         FD_STDOUT => {
             let slice = unsafe { core::slice::from_raw_parts(buf, len) };
             let str = core::str::from_utf8(slice).unwrap();
-            print!("{}", str);
+            print!("{}", str);//是在os/console.rs中实现的打印
             len as isize
         }
         _ => {
