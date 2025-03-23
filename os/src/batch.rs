@@ -69,7 +69,7 @@ impl AppManager {
 
     fn load_app(&self, app_id: usize) {
         if app_id >= self.num_app {
-            println!("All applications completed!");
+            println!("[kernel] All applications completed!");
             shutdown(false);
         }
         println!("[kernel] Loading app_{}", app_id);

@@ -1,0 +1,113 @@
+############变量定义############
+# Building
+TARGET := riscv64gc-unknown-none-elf #指定 Rust 目标架构为 riscv64gc-unknown-none-elf，表示生成 RISC-V 64 位无操作系统环境的 ELF 格式二进制文件
+MODE := release #构建模式，默认为 release 以优化代码
+KERNEL_ELF := target/$(TARGET)/$(MODE)/os #内核 ELF 文件路径
+KERNEL_BIN := $(KERNEL_ELF).bin #将 KERNEL_ELF 转换为二进制文件后的路径
+DISASM_TMP := target/$(TARGET)/$(MODE)/asm #反汇编的临时文件路径
+
+# Building mode argument 构建模式参数
+ifeq ($(MODE), release)
+	MODE_ARG := --release
+endif
+#如果 MODE 设为 release，则 MODE_ARG 设为 --release 以启用 Rust 代码优化。
+
+# BOARD 板级支持
+BOARD := qemu
+SBI ?= rustsbi
+BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
+#BOARD：默认使用 QEMU 作为仿真目标。
+#SBI：默认为 rustsbi，表示使用 Rust 实现的 Supervisor Binary Interface (SBI)。
+#BOOTLOADER：引导程序的路径，默认为 ../bootloader/rustsbi-qemu.bin
+
+# KERNEL ENTRY
+KERNEL_ENTRY_PA := 0x80200000
+#内核的物理地址入口，通常用于 QEMU virt 板的内核加载位置。
+
+# Binutils
+OBJDUMP := rust-objdump --arch-name=riscv64
+OBJCOPY := rust-objcopy --binary-architecture=riscv64
+#rust-objdump：用于反汇编 RISC-V 64 位 ELF 文件。
+#rust-objcopy：用于将 ELF 文件转换为二进制格式
+
+# Disassembly
+DISASM ?= -x
+#DISASM 变量定义 rust-objdump 的参数，-x 表示显示完整的反汇编信息
+
+############构建规则#############
+#总构建目标
+build: env $(KERNEL_BIN)
+#依赖 env（环境配置）和 $(KERNEL_BIN)（最终的二进制内核文件）
+
+env:
+	(rustup target list | grep "riscv64gc-unknown-none-elf (installed)") || rustup target add $(TARGET)
+	cargo install cargo-binutils
+	rustup component add rust-src
+	rustup component add llvm-tools-preview
+
+#确保 Rust 已安装 riscv64gc-unknown-none-elf 目标。
+#安装 cargo-binutils，提供 rust-objdump 和 rust-objcopy。
+#添加 rust-src 组件，使 core 库的源代码可用（用于裸机开发）。
+#添加 llvm-tools-preview 组件，以支持 cargo-binutils。
+
+#构建二进制内核
+$(KERNEL_BIN): kernel
+	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
+
+
+#编译内核
+kernel:
+	@cd ../user && make build
+	@echo Platform: $(BOARD)
+	@cp src/linker-$(BOARD).ld src/linker.ld
+	@cargo build $(MODE_ARG)
+	@rm src/linker.ld
+#先进入 ../user 目录执行 make build，可能用于构建用户态程序。
+#输出当前 BOARD 平台信息。
+#复制 src/linker-$(BOARD).ld 到 src/linker.ld，用于链接过程。
+#使用 cargo build 编译内核。
+#构建完成后删除 src/linker.ld 以清理临时链接文件。
+
+#执行 cargo clean 以清除编译缓存
+clean:
+	@cargo clean
+
+#反汇编 $(KERNEL_ELF) 并使用 less 进行查看
+disasm: kernel
+	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
+#先将反汇编结果存入 DISASM_TMP 文件，再用 vim 打开，最后删除该临时文件
+disasm-vim: kernel
+	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) > $(DISASM_TMP)
+	@vim $(DISASM_TMP)
+	@rm $(DISASM_TMP)
+
+#运行内核
+run: run-inner
+#QEMU 运行参数
+QEMU_ARGS := -machine virt \
+			 -nographic \
+			 -bios $(BOOTLOADER) \
+			 -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+#QEMU 版本检查
+QEMU_NAME := qemu-system-riscv64
+qemu-version-check:
+	@sh scripts/qemu-ver-check.sh $(QEMU_NAME)
+#先检查 QEMU 版本，再构建内核，最后运行 QEMU
+run-inner: qemu-version-check build
+	@qemu-system-riscv64 $(QEMU_ARGS)
+
+#GDB 调试
+#启动 QEMU 并等待 GDB 连接
+debug: qemu-version-check build
+	@tmux new-session -d \
+		"qemu-system-riscv64 $(QEMU_ARGS) -s -S" && \
+		tmux split-window -h "riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
+		tmux -2 attach-session -d
+#手动启动 GDB 服务器：启动 QEMU 并监听 1234 端口，等待 GDB 连接
+gdbserver: qemu-version-check build
+	@qemu-system-riscv64 $(QEMU_ARGS) -s -S
+#手动启动 GDB 客户端：连接到 QEMU 提供的 GDB 服务器，进行远程调试
+gdbclient:
+	@riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
+
+.PHONY: build env kernel clean disasm disasm-vim run-inner gdbserver gdbclient qemu-version-check
